@@ -22,6 +22,8 @@ import java.util.stream.Stream;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+
+import com.monitorjbl.xlsx.StreamingReader;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
@@ -101,6 +103,23 @@ public class BenchmarksTest {
     }
 
     @Benchmark
+    public long monitorjbl() throws IOException {
+        final long[] result = {0};
+        try (InputStream is = openResource(FILE);
+             org.apache.poi.ss.usermodel.Workbook workbook = StreamingReader.builder().open(is)) {
+            for (org.apache.poi.ss.usermodel.Sheet sheet : workbook) {
+                System.out.println(sheet.getSheetName());
+                for (org.apache.poi.ss.usermodel.Row r : sheet) {
+                    for (org.apache.poi.ss.usermodel.Cell c : r) {
+                        result[0] += c.getCellType().hashCode();
+                    }
+                }
+            }
+        }
+        return result[0];
+    }
+
+    @Benchmark
     public long streamingApachePoi() throws IOException, OpenXML4JException, SAXException {
         final long[] result = {0};
         try (OPCPackage pkg = OPCPackage.open(openResource(FILE))) {
@@ -112,7 +131,7 @@ public class BenchmarksTest {
             while (iterator.hasNext()) {
                 try (InputStream sheetStream = iterator.next()) {
                     if (sheetIndex == 0) {
-                        processSheet(styles, strings, new SheetContentHandler(){
+                        processSheet(styles, strings, new SheetContentHandler() {
                             @Override
                             public void cell(String cellReference, String formattedValue, XSSFComment comment) {
                                 result[0] += formattedValue.hashCode();
@@ -127,7 +146,7 @@ public class BenchmarksTest {
     }
 
     private void processSheet(StylesTable styles, ReadOnlySharedStringsTable strings,
-            XSSFSheetXMLHandler.SheetContentsHandler sheetHandler, InputStream sheetInputStream) throws IOException, SAXException {
+                              XSSFSheetXMLHandler.SheetContentsHandler sheetHandler, InputStream sheetInputStream) throws IOException, SAXException {
         DataFormatter formatter = new DataFormatter();
         InputSource sheetSource = new InputSource(sheetInputStream);
         SAXParserFactory saxFactory = SAXParserFactory.newInstance();
