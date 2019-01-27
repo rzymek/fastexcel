@@ -74,29 +74,35 @@ public class BenchmarksTest {
     private static final String FILE = "/xlsx/calendar_stress_test.xlsx";
 
     @Benchmark
-    public void apachePoi() throws IOException, InvalidFormatException {
+    public long apachePoi() throws IOException, InvalidFormatException {
+        final long[] result = {0};
         try (Workbook wb = WorkbookFactory.create(openResource(FILE))) {
             org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheetAt(0);
             sheet.forEach(r -> {
-                r.getCell(0);
+                result[0] += r.getCell(0).getCellType().hashCode();
             });
         }
+        return result[0];
     }
 
     @Benchmark
-    public void fastExcelReader() throws IOException {
+    public long fastExcelReader() throws IOException {
+        final long[] result = {0};
         try (InputStream is = openResource(FILE); ReadableWorkbook wb = new ReadableWorkbook(is)) {
             Sheet sheet = wb.getFirstSheet();
             try (Stream<Row> rows = sheet.openStream()) {
                 rows.forEach(r -> {
                     Cell cell = r.getCell(0);
+                    result[0] += cell.getType().hashCode();
                 });
             }
         }
+        return result[0];
     }
 
     @Benchmark
-    public void streamingApachePoi() throws IOException, OpenXML4JException, SAXException {
+    public long streamingApachePoi() throws IOException, OpenXML4JException, SAXException {
+        final long[] result = {0};
         try (OPCPackage pkg = OPCPackage.open(openResource(FILE))) {
             ReadOnlySharedStringsTable strings = new ReadOnlySharedStringsTable(pkg);
             XSSFReader reader = new XSSFReader(pkg);
@@ -106,12 +112,18 @@ public class BenchmarksTest {
             while (iterator.hasNext()) {
                 try (InputStream sheetStream = iterator.next()) {
                     if (sheetIndex == 0) {
-                        processSheet(styles, strings, new SheetContentHandler(), sheetStream);
+                        processSheet(styles, strings, new SheetContentHandler(){
+                            @Override
+                            public void cell(String cellReference, String formattedValue, XSSFComment comment) {
+                                result[0] += formattedValue.hashCode();
+                            }
+                        }, sheetStream);
                     }
                 }
                 sheetIndex++;
             }
         }
+        return result[0];
     }
 
     private void processSheet(StylesTable styles, ReadOnlySharedStringsTable strings,
@@ -136,11 +148,11 @@ public class BenchmarksTest {
         String foo = BenchmarksTest.class.getName() + "\\..*";
         Options options = new OptionsBuilder().include(foo)
                 .mode(Mode.SingleShotTime)
-                .warmupIterations(0)
+                .warmupIterations(1)
                 .warmupBatchSize(1)
                 .measurementIterations(1)
                 .threads(1)
-                .forks(0)
+                .forks(1)
                 .timeUnit(TimeUnit.MILLISECONDS)
                 .shouldFailOnError(true)
                 .resultFormat(ResultFormatType.CSV)
